@@ -45,7 +45,7 @@
 ## 📦 INSTALLATION
 
 ### 📌 Clone repository
-`git clone :https://github.com/USERNAME/BRINDI-XMD.git`
+`git clone https://github.com/USERNAME/BRINDI-XMD.git`
 
 cd BRINDI-XMD
 
@@ -61,13 +61,13 @@ npm start`
 
 Environment
 
-`PREFIX=.
+PREFIX=.
 
 OWNER_NUMBER=237XXXXXXXXX
 
 SESSION_ID=your_session_id
 
-BOT_NAME=BRINDI-XMD`
+BOT_NAME=BRINDI-XMD
 
 ## 📁 PROJECT STRUCTURE
 
