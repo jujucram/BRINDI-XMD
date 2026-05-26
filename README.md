@@ -1,7 +1,7 @@
 # 🥷🏾 BRINDI-XMD BOT V1
 
 <p align="center">
-  <img src="https://i.imgur.com/your-banner.png" width="280"/>
+  <img src="https://github.com/jujucram/BRINDI-XMD/blob/main/assets/IMG-20240812-WA0097.jpg" width="280"/>
 </p>
 
 <p align="center">
