@@ -7,7 +7,7 @@ const settings = {
   botOwner: process.env.OWNER_NAME || 'Brindi Cram',
   ownerNumber: process.env.OWNER_NUMBER || '237673355468',
   prefix: process.env.PREFIX || '.',
-  giphyApiKey: process.env.GIPHY_API_KEY || 'qnl7ssQChTdPjsKta2Ax2LMaGXz303tq',
+  giphyApiKey: process.env.GIPHY_API_KEY || '',// votre api giphy
   commandMode: process.env.COMMAND_MODE || 'private',
   maxStoreMessages: 20,
   storeWriteInterval: 10000,
