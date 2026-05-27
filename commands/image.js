@@ -1,14 +1,5 @@
-// image.js — ITACHI-XMD-V2
-// Recherche d'images via Pinterest API
-const axios = require('axios');
 
-const channelInfo = {
-    forwardingScore: 1, isForwarded: true,
-    forwardedNewsletterMessageInfo: {
-        newsletterJid: '120363408304719268@newsletter',
-        newsletterName: 'ITACHI-XMD', serverMessageId: -1
-    }
-};
+const axios = require('axios');
 
 async function imageCommand(sock, chatId, message, args) {
     const query = args.join(' ').trim();
