@@ -512,12 +512,20 @@ async function handleMessages(sock, messageUpdate, printLog) {
                 break;
             }
             case userMessage.startsWith('.signal'): {
-                const signalArgs = userMessage.split(' ').slice(1);
-                const mentionedJidsSignal = message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-                await signalCommand(sock, chatId, senderId, mentionedJidsSignal, message, signalArgs);
-                commandExecuted = true;
-                break;
-            }
+    // 1. Récupération propre des arguments
+    const signalArgs = userMessage.trim().split(/\s+/).slice(1);
+    
+    // 2. Sécurité pour les mentions (gère le texte étendu ET les citations/replies)
+    const contextInfo = message.message?.extendedTextMessage?.contextInfo;
+    const mentionedJidsSignal = contextInfo?.mentionedJid || (contextInfo?.participant ? [contextInfo.participant] : []);
+    
+    // 3. Appel de la commande
+    await signalCommand(sock, chatId, senderId, mentionedJidsSignal, message, signalArgs);
+    
+    commandExecuted = true;
+    break;
+}
+
             case userMessage.startsWith('.approve'): {
                 const mentionedApprove = message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
                 await approveCommand(sock, chatId, senderId, mentionedApprove, message, isOwnerOrSudoCheck, isSenderAdmin);
