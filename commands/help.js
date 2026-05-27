@@ -63,7 +63,7 @@ async function helpCommand(sock, chatId, message) {
 │ ⚝ ${p}fact ➪ Fait intéressant
 │ ⚝ ${p}weather ➪ Météo
 │ ⚝ ${p}news ➪ Actualités
-│ ⚝ ${p}journal ➪ Journal en français
+│ ⚝ ${p}journal ➪ Journal
 │ ⚝ ${p}attp ➪ Texte en sticker
 │ ⚝ ${p}8ball ➪ Boule magique
 │ ⚝ ${p}groupinfo ➪ Infos groupe
@@ -72,7 +72,7 @@ async function helpCommand(sock, chatId, message) {
 │ ⚝ ${p}trt ➪ Traduction
 │ ⚝ ${p}ss ➪ Capture ecran
 │ ⚝ ${p}gjid ➪ Identifiant groupe
-│ ⚝ ${p}url ➪ Lien raccourci
+│ ⚝ ${p}url ➪ Lien image
 │ ⚝ ${p}theme ➪ Changer theme
 │ ⚝ ${p}test ➪ Vérifier bot actif
 │ ⚝ ${p}info ➪ Infos du bot
