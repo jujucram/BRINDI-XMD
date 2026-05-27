@@ -45,9 +45,9 @@
 ## 📦 INSTALLATION
 
 ### 📌 Clone repository
-`git clone https://github.com/USERNAME/BRINDI-XMD.git`
+- `git clone https://github.com/USERNAME/BRINDI-XMD.git`
 
-cd BRINDI-XMD
+- cd BRINDI-XMD
 
 ## 📌 Install dependencies
 `Bash:
@@ -58,8 +58,6 @@ npm install`
 npm start`
 
 ## 🔑 CONFIGURATION (.env)
-
-Environment
 
 PREFIX=.
 
@@ -89,13 +87,13 @@ BRINDI-XMD/
 Use .menu in WhatsApp to display all commands.
 
 ## 👑 OWNER INFO
-🧑‍💻 Developer : Brandon
+- 🧑‍💻 Developer : Brandon
 
-📞 Contact : 237673355468
+- 📞 Contact : 237673355468
 
-💻 Bot Name : BRINDI-XMD
+- 💻 Bot Name : BRINDI-XMD
 
-⚙️ Version : v1.0.0
+- ⚙️ Version : v1.0.0
 
 ## ⚠️ DISCLAIMER
 This bot is created for educational and personal use only.
@@ -103,13 +101,14 @@ Misuse of this bot is not the responsibility of the developer.
 
 ## 💥 SUPPORT PROJECT
 If you like this project:
-⭐ Star the repository
 
-🍴 Fork it
+- ⭐ Star the repository
 
-📢 Share it
+- 🍴 Fork it
 
-🔥 Contribute
+- 📢 Share it
+
+- 🔥 Contribute
 
 ## 🥷🏾 BRINDI-XMD 
 "Automation. Intelligence. Power."
