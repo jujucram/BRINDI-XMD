@@ -63,7 +63,7 @@ PREFIX=.
 
 OWNER_NUMBER=237XXXXXXXXX
 
-SESSION_ID=your_session_id
+GIPHY_API_KEY=Votre clés api
 
 BOT_NAME=BRINDI-XMD
 
@@ -82,6 +82,7 @@ BRINDI-XMD/
 ├── index.js
 
 └── package.json
+
 
 ## 🚀 COMMANDS
 Use .menu in WhatsApp to display all commands.
