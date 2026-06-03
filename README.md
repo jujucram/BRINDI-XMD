@@ -111,5 +111,8 @@ If you like this project:
 
 - 🔥 Contribute
 
+## Licence 
+ce projet est protégé par une licence MIT
+
 ## 🥷🏾 BRINDI-XMD 
 "Automation. Intelligence. Power."
