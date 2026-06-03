@@ -19,7 +19,7 @@ global.APIKeys = {
   '': '', 
   '': '', 
   '': '' 
-}; 
+}; // veuillez entrer vos propres apikeys
 
 module.exports = { 
   WARN_COUNT: 3, 
