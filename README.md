@@ -14,18 +14,18 @@
 ## 📊 GITHUB STATS
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Type-WhatsApp_Bot-purple?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Powered_By-Baileys-black?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Maintained-Yes-green?style=for-the-badge"/>
+  <a href="https://github.com/jujucram/BRINDI-XMD/stargazers">
+    <img src="https://img.shields.io/github/stars/jujucram/BRINDI-XMD?style=social"/>
+  </a>
+  <a href="https://github.com/jujucram/BRINDI-XMD/network/members">
+    <img src="https://img.shields.io/github/forks/jujucram/BRINDI-XMD?style=social"/>
+  </a>
+  <a href="https://github.com/jujucram/BRINDI-XMD/watchers">
+    <img src="https://img.shields.io/github/watchers/jujucram/BRINDI-XMD?style=social"/>
+  </a>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/github/stars/USERNAME/BRINDI-XMD?style=social"/>
-  <img src="https://img.shields.io/github/forks/USERNAME/BRINDI-XMD?style=social"/>
-  <img src="https://img.shields.io/github/watchers/USERNAME/BRINDI-XMD?style=social"/>
-</p>
+
 
 ---
 
