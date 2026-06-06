@@ -6,45 +6,40 @@ const {
     default: makeWASocket,
     useMultiFileAuthState,
     makeCacheableSignalKeyStore,
-    Browsers,
+    DisconnectReason,
     delay
 } = require('@whiskeysockets/baileys');
 
+// ─── Sessions actives ─────────────────────────────────────────────────────────
 const activePairSessions = {};
 
-function makeid(length = 6) {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function makeid(length = 8) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-
-    for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-
-    return result;
+    return Array.from({ length }, () =>
+        chars.charAt(Math.floor(Math.random() * chars.length))
+    ).join('');
 }
 
 function removeDir(dirPath) {
     try {
-        if (fs.existsSync(dirPath)) {
-            fs.rmSync(dirPath, {
-                recursive: true,
-                force: true
-            });
-        }
+        if (fs.existsSync(dirPath))
+            fs.rmSync(dirPath, { recursive: true, force: true });
     } catch (e) {
-        console.log('❌ Erreur suppression dossier :', e.message);
+        console.error('❌ removeDir:', e.message);
     }
 }
 
-async function pairCommand(sock, chatId, message, args) {
+function silentClose(sock) {
+    try { sock?.ws?.close(); } catch {}
+    try { sock?.end(undefined); } catch {}
+}
 
-    const number = args[0]?.replace(/[^0-9]/g, '');
+// ─── Logger silencieux ────────────────────────────────────────────────────────
+const silentLogger = pino({ level: 'silent' });
 
-    // Vérification numéro
-    if (!number || number.length < 7) {
-        return await sock.sendMessage(chatId, {
-            image: { url: './assets/IMG-20240812-WA0097.jpg' },
-            caption:
+// ─── Message d'aide ───────────────────────────────────────────────────────────
+const HELP_MSG =
 `╔═══════════════════════╗
 ║  🥷 *BRINDI-𝗫𝗠𝗗 v1.0* 🥷  ║
 ╠═══════════════════════╣
@@ -69,105 +64,118 @@ async function pairCommand(sock, chatId, message, args) {
 │ ✅ Bot connecté !
 └──────────────────────
 
-> _Propulsé par 🥷 Brandon_`
-        }, { quoted: message });
+> _Propulsé par BRINDI-𝗫𝗠𝗗_`;
+
+// ─── Commande principale ──────────────────────────────────────────────────────
+async function pairCommand(sock, chatId, message, args) {
+
+    const number = args[0]?.replace(/[^0-9]/g, '');
+
+    // Validation numéro
+    if (!number || number.length < 7) {
+        return sock.sendMessage(chatId,
+            { image: { url: './assets/IMG-20240812-WA0097.jpg' }, caption: HELP_MSG },
+            { quoted: message }
+        );
     }
 
-    // Vérifie si session déjà active
+    // Session déjà en cours
     if (activePairSessions[number]) {
-        return await sock.sendMessage(chatId, {
-            text:
-`⚠️ *Une session est déjà en cours pour ce numéro.*
-
-_Attends quelques secondes et réessaie._`
+        return sock.sendMessage(chatId, {
+            text: `⚠️ *Session déjà en cours pour +${number}.*\n\n_Attends 30 secondes et réessaie._`
         }, { quoted: message });
     }
+
+    // Marquer session active
+    activePairSessions[number] = true;
 
     await sock.sendMessage(chatId, {
-        text:
-`⏳ *Génération du code...*
-
-📞 *Numéro :* +${number}
-
-_Patiente quelques secondes..._`
+        text: `⏳ *Génération du code en cours...*\n\n📞 *Numéro :* +${number}\n\n_Patiente quelques secondes..._\n> BRINDI-XMD`
     }, { quoted: message });
 
     const sessionId = makeid();
+    const tempDir   = path.join(process.cwd(), 'temp_pair', sessionId);
+    const sessionDir = path.join(process.cwd(), 'sessions', number);
 
-    const tempDir = path.join(
-        process.cwd(),
-        'temp_pair',
-        sessionId
-    );
-
-    activePairSessions[number] = true;
+    // ── Nettoyage garanti ────────────────────────────────────────────────────
+    function cleanup(tempSock) {
+        delete activePairSessions[number];
+        silentClose(tempSock);
+        removeDir(tempDir);
+    }
 
     try {
+        const { state, saveCreds } = await useMultiFileAuthState(tempDir);
 
-        // Création auth state
-        const { state, saveCreds } =
-            await useMultiFileAuthState(tempDir);
-
-        // Création socket temporaire
+        // ── Choix du browser : WA Desktop (meilleure compatibilité pairing) ──
         const tempSock = makeWASocket({
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(
-                    state.keys,
-                    pino({ level: 'fatal' })
-                )
+                keys: makeCacheableSignalKeyStore(state.keys, silentLogger)
             },
-
-            logger: pino({ level: 'fatal' }),
-
+            logger: silentLogger,
             printQRInTerminal: false,
-
-            browser: Browsers.ubuntu('Chrome'),
-
+            // Mobile = identifiant le plus stable pour pairing code
+            mobile: false,
+            browser: ['Ubuntu', 'Chrome', '22.04'],
             syncFullHistory: false,
-
-            markOnlineOnConnect: false
+            markOnlineOnConnect: false,
+            connectTimeoutMs: 60_000,
+            defaultQueryTimeoutMs: 60_000,
+            keepAliveIntervalMs: 10_000,
+            retryRequestDelayMs: 250,
+            fireInitQueries: false,
+            generateHighQualityLinkPreview: false,
         });
 
-        // Sauvegarde creds
         tempSock.ev.on('creds.update', saveCreds);
 
-        let codeSent = false;
-        let connectionOpened = false;
+        // ── Flags ──────────────────────────────────────────────────────────
+        let codeSent       = false;
+        let connectionOpen = false;
+        let timedOut       = false;
 
-        // Gestion connexion
+        // ── Timeout global 3 min ───────────────────────────────────────────
+        const globalTimer = setTimeout(async () => {
+            if (!connectionOpen && activePairSessions[number]) {
+                timedOut = true;
+                cleanup(tempSock);
+                await sock.sendMessage(chatId, {
+                    text:
+`⌛ *Temps expiré !*
+
+Le code a expiré ou n'a pas été utilisé.
+
+🔄 Réessaie avec :
+_.pair ${number}_`
+                }, { quoted: message });
+            }
+        }, 3 * 60_000);
+
+        // ── Gestion connexion ──────────────────────────────────────────────
         tempSock.ev.on('connection.update', async (update) => {
 
-            const {
-                connection,
-                lastDisconnect
-            } = update;
+            const { connection, lastDisconnect } = update;
+            const statusCode = lastDisconnect?.error?.output?.statusCode
+                            ?? lastDisconnect?.error?.output?.payload?.statusCode
+                            ?? lastDisconnect?.error?.output?.statusCode;
 
-            // Génération code pairing
-            if (
-                !codeSent &&
-                !tempSock.authState.creds.registered
-            ) {
+            // ── Génération du pairing code ─────────────────────────────────
+            if (!codeSent && !tempSock.authState.creds.registered && !timedOut) {
+
+                // On ne tente pas si la connexion est déjà fermée
+                if (connection === 'close') return;
 
                 codeSent = true;
 
                 try {
-
                     await delay(3000);
 
-                    const code =
-                        await tempSock.requestPairingCode(
-                            number.trim()
-                        );
-
-                    const formattedCode =
-                        code?.match(/.{1,4}/g)?.join('-') || code;
+                    const code = await tempSock.requestPairingCode(number.trim());
+                    const fmt  = code?.match(/.{1,4}/g)?.join('-') ?? code;
 
                     await sock.sendMessage(chatId, {
-                        image: {
-                            url: './assets/IMG-20240812-WA0097.jpg'
-                        },
-
+                        image: { url: './assets/IMG-20240812-WA0097.jpg' },
                         caption:
 `╔═══════════════════════╗
 ║  🥷 *BRINDI-𝗫𝗠𝗗 v1.0* 🥷  ║
@@ -179,7 +187,7 @@ _Patiente quelques secondes..._`
 
 🔑 *Ton code :*
 ┌──────────────────────
-│ \`\`\`${formattedCode}\`\`\`
+│ \`\`\`${fmt}\`\`\`
 └──────────────────────
 
 📌 *Comment l'utiliser :*
@@ -188,70 +196,43 @@ _Patiente quelques secondes..._`
 │ 2️⃣ ⋮ → Appareils liés
 │ 3️⃣ Lier un appareil
 │ 4️⃣ Connecter avec numéro
-│ 5️⃣ Entre : *${formattedCode}*
+│ 5️⃣ Entre : *${fmt}*
 │ ✅ Bot connecté !
 └──────────────────────
 
 ⏰ *Ce code expire dans 60 secondes !*
 
-> _Propulsé par 🥷 Brandon_`
+> _Propulsé par BRINDI-𝗫𝗠𝗗`
                     }, { quoted: message });
 
                 } catch (codeErr) {
+                    clearTimeout(globalTimer);
+                    cleanup(tempSock);
 
-                    console.log(
-                        '❌ Erreur pairing :',
-                        codeErr.message
-                    );
-
-                    delete activePairSessions[number];
-
-                    removeDir(tempDir);
-
-                    return await sock.sendMessage(chatId, {
+                    const hint = getErrorHint(codeErr);
+                    return sock.sendMessage(chatId, {
                         text:
-`❌ *Erreur génération code.*
+`❌ *Impossible de générer le code.*
 
-📌 *Erreur :*
-${codeErr.message}
+📌 *Erreur :* ${codeErr.message}
+💡 *Conseil :* ${hint}
 
-_Vérifie que le numéro est valide et possède WhatsApp._`
+🔄 Réessaie dans 30 secondes.`
                     }, { quoted: message });
                 }
             }
 
-            // Connexion réussie
-            if (connection === 'open') {
-
-                if (connectionOpened) return;
-
-                connectionOpened = true;
+            // ── Connexion réussie ──────────────────────────────────────────
+            if (connection === 'open' && !connectionOpen) {
+                connectionOpen = true;
+                clearTimeout(globalTimer);
 
                 try {
+                    await delay(3000);
 
-                    await delay(5000);
-
-                    const sessionDir = path.join(
-                        process.cwd(),
-                        'sessions',
-                        number
-                    );
-
-                    // Crée dossier session
-                    if (!fs.existsSync(sessionDir)) {
-                        fs.mkdirSync(sessionDir, {
-                            recursive: true
-                        });
-                    }
-
-                    // Copie complète session
-                    fs.cpSync(
-                        tempDir,
-                        sessionDir,
-                        {
-                            recursive: true
-                        }
-                    );
+                    // Sauvegarde session
+                    fs.mkdirSync(sessionDir, { recursive: true });
+                    fs.cpSync(tempDir, sessionDir, { recursive: true });
 
                     await sock.sendMessage(chatId, {
                         text:
@@ -262,119 +243,119 @@ _Vérifie que le numéro est valide et possède WhatsApp._`
 ╚═══════════════════════╝
 
 🎉 *Connexion réussie !*
-
 📞 *Numéro :* +${number}
+🟢 *Session sauvegardée.*
 
-🟢 *La session a été sauvegardée.*
+Tape *.menu* pour voir les commandes !
 
-Tape *.menu* pour voir toutes les commandes !
-
-> _Propulsé par 🥷 Brandon_`
+> _Propulsé par BRINDI-𝗫𝗠𝗗`
                     }, { quoted: message });
 
                 } catch (saveErr) {
-
-                    console.log(
-                        '❌ Erreur sauvegarde :',
-                        saveErr.message
-                    );
+                    console.error('❌ Sauvegarde session :', saveErr.message);
                 }
 
-                // Nettoyage
-                delete activePairSessions[number];
-
-                try {
-                    await tempSock.ws.close();
-                } catch {}
-
-                removeDir(tempDir);
+                cleanup(tempSock);
 
                 // Démarrage auto session
                 try {
-
-                    if (global.startUserSession) {
+                    if (typeof global.startUserSession === 'function') {
                         await global.startUserSession(number);
-
-                        console.log(
-                            `✅ Session démarrée : ${number}`
-                        );
+                        console.log(`✅ Session démarrée : ${number}`);
                     }
-
                 } catch (startErr) {
-
-                    console.log(
-                        '❌ Erreur startUserSession :',
-                        startErr.message
-                    );
+                    console.error('❌ startUserSession :', startErr.message);
                 }
             }
 
-            // Déconnexion
+            // ── Connexion fermée ───────────────────────────────────────────
             else if (connection === 'close') {
 
-                const reason =
-                    lastDisconnect?.error?.output?.statusCode;
+                // Si connexion déjà ouverte → fermeture normale, ignorer
+                if (connectionOpen) return;
 
-                console.log(
-                    '❌ Connexion fermée :',
-                    reason || 'unknown'
-                );
+                clearTimeout(globalTimer);
 
-                delete activePairSessions[number];
+                const msg = getDisconnectMessage(statusCode, number);
 
-                try {
-                    await tempSock.ws.close();
-                } catch {}
+                // Nettoyer seulement si pas encore fait
+                if (activePairSessions[number]) {
+                    cleanup(tempSock);
 
-                removeDir(tempDir);
+                    await sock.sendMessage(chatId, {
+                        text: msg
+                    }, { quoted: message });
+                }
             }
         });
 
-        // Timeout sécurité
-        setTimeout(async () => {
-
-            if (activePairSessions[number]) {
-
-                delete activePairSessions[number];
-
-                try {
-                    await tempSock.ws.close();
-                } catch {}
-
-                removeDir(tempDir);
-
-                await sock.sendMessage(chatId, {
-                    text:
-`⌛ *Temps expiré !*
-
-Le code de connexion a expiré.
-
-🔄 Refais :
-.pair ${number}`
-                }, { quoted: message });
-            }
-
-        }, 3 * 60 * 1000);
-
     } catch (error) {
-
-        console.log(
-            '❌ [PAIR ERROR]',
-            error.message
-        );
-
         delete activePairSessions[number];
-
         removeDir(tempDir);
 
-        return await sock.sendMessage(chatId, {
-            text:
-`❌ *Impossible de générer le code.*
+        console.error('❌ [PAIR ERROR]', error.message);
 
-📌 *Erreur :*
-${error.message}`
+        return sock.sendMessage(chatId, {
+            text:
+`❌ *Erreur critique lors du pairing.*
+
+📌 *Erreur :* ${error.message}
+💡 *Conseil :* Redémarre le bot et réessaie.`
         }, { quoted: message });
     }
+}
+
+// ─── Messages d'erreur selon le code de déconnexion ──────────────────────────
+function getDisconnectMessage(code, number) {
+    const retry = `\n\n🔄 Réessaie avec :\n_.pair ${number}_`;
+
+    const messages = {
+        // 401 = Non autorisé / session invalide
+        401: `❌ *Erreur 401 — Session invalide.*\n\nLe numéro +${number} a refusé la connexion ou la session est expirée.${retry}`,
+
+        // 403 = Compte banni ou restrictions
+        403: `⛔ *Erreur 403 — Accès refusé.*\n\nWhatsApp a bloqué cette tentative. Le compte est peut-être restreint ou banni temporairement.${retry}`,
+
+        // 405 = Mauvaise méthode / navigateur non reconnu
+        405: `❌ *Erreur 405 — Navigateur non reconnu.*\n\nWhatsApp a rejeté l'identifiant de session.${retry}`,
+
+        // 408 = Timeout
+        408: `⌛ *Erreur 408 — Timeout.*\n\nLa connexion a pris trop de temps.${retry}`,
+
+        // 411 = Déjà connecté ailleurs
+        411: `⚠️ *Erreur 411 — Déjà connecté.*\n\nLe numéro +${number} est déjà lié à un autre appareil actif.\n\nDéconnecte l'ancien appareil depuis WhatsApp → Appareils liés.${retry}`,
+
+        // 428 = Pairing pas complété à temps
+        428: `⌛ *Erreur 428 — Code non utilisé.*\n\nLe code a expiré avant d'être saisi.${retry}`,
+
+        // 440 = Remplacé par une autre connexion
+        440: `⚠️ *Erreur 440 — Session remplacée.*\n\nUne autre connexion a pris la place.${retry}`,
+
+        // 500 = Erreur serveur WhatsApp
+        500: `🔴 *Erreur 500 — Serveur WhatsApp.*\n\nPanne côté WhatsApp. Attends quelques minutes et réessaie.${retry}`,
+
+        // 515 = Reset / session rejetée
+        515: `❌ *Erreur 515 — Session rejetée.*\n\nWhatsApp a forcé une réinitialisation.\n\n💡 *Causes possibles :*\n• Numéro déjà actif sur Baileys\n• Trop de tentatives rapides\n• IP blacklistée temporairement\n\nAttends 1 minute et réessaie.${retry}`,
+    };
+
+    return messages[code] ??
+        `❌ *Connexion fermée (code: ${code ?? 'inconnu'}).*\n\nUne erreur inattendue s'est produite.${retry}`;
+}
+
+// ─── Conseils selon l'erreur de génération de code ───────────────────────────
+function getErrorHint(err) {
+    const msg = err.message?.toLowerCase() ?? '';
+
+    if (msg.includes('not registered') || msg.includes('not a whatsapp'))
+        return 'Ce numéro n\'est pas enregistré sur WhatsApp.';
+    if (msg.includes('rate') || msg.includes('limit'))
+        return 'Trop de tentatives. Attends 1 minute.';
+    if (msg.includes('timeout'))
+        return 'Connexion trop lente. Vérifie ta connexion internet.';
+    if (msg.includes('bad session') || msg.includes('invalid'))
+        return 'Session corrompue. Le dossier temp sera nettoyé automatiquement.';
+
+    return 'Vérifie que le numéro est correct et possède WhatsApp.';
 }
 
 module.exports = pairCommand;
