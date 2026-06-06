@@ -1,91 +1,65 @@
 const gTTS = require('gtts');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 
 async function ttsCommand(sock, chatId, text, message, language = 'fr') {
     try {
-
-        if (!text || !text.trim()) {
-            await sock.sendMessage(chatId, {
-                text: '❌ Veuillez entrer un texte.\n\nExemple :\n.tts Bonjour tout le monde\n\n> BRINDI-XMD'
+        // Vérif texte
+        if (!text) {
+            return await sock.sendMessage(chatId, {
+                text: `❌ Veuillez entrer un texte.\n\n📌 Exemple :\n.tts salut les gars\n\n> BRINDI-XMD`
             }, { quoted: message });
-            return;
         }
 
-        // Création dossier assets
+        const timestamp = Date.now();
         const assetsDir = path.join(__dirname, '..', 'assets');
 
-        if (!fs.existsSync(assetsDir)) {
-            fs.mkdirSync(assetsDir, { recursive: true });
-        }
+        // Créer le dossier assets si inexistant
+        if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
 
-        // Nom fichier
-        const fileName = `tts_${Date.now()}.mp3`;
-        const filePath = path.join(assetsDir, fileName);
+        const mp3Path = path.join(assetsDir, `tts-${timestamp}.mp3`);
+        const oggPath = path.join(assetsDir, `tts-${timestamp}.ogg`);
 
-        // Génération TTS
+        // Générer le MP3 avec gTTS
         const gtts = new gTTS(text, language);
 
-        gtts.save(filePath, async (err) => {
-
-            if (err) {
-                console.error('Erreur TTS :', err);
-
-                await sock.sendMessage(chatId, {
-                    text: '❌ Impossible de générer le vocal.\n\n> BRINDI-XMD'
-                }, { quoted: message });
-
-                return;
-            }
-
-            try {
-
-                // Vérifie que fichier existe
-                if (!fs.existsSync(filePath)) {
-                    throw new Error('Fichier audio introuvable');
-                }
-
-                // Envoi audio stable
-                await sock.sendMessage(chatId, {
-                    audio: { url: filePath },
-                    mimetype: 'audio/mpeg',
-                    ptt: true
-                }, { quoted: message });
-
-                // Suppression après envoi
-                setTimeout(() => {
-                    try {
-                        if (fs.existsSync(filePath)) {
-                            fs.unlinkSync(filePath);
-                        }
-                    } catch (e) {
-                        console.error('Erreur suppression :', e);
-                    }
-                }, 10000);
-
-            } catch (sendError) {
-
-                console.error('Erreur envoi audio :', sendError);
-
-                await sock.sendMessage(chatId, {
-                    text: '❌ WhatsApp a refusé le fichier audio.\n\n> BRINDI-XMD'
-                }, { quoted: message });
-
-                try {
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
-                    }
-                } catch {}
-            }
-
+        await new Promise((resolve, reject) => {
+            gtts.save(mp3Path, (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
         });
 
-    } catch (error) {
+        // Convertir MP3 → OGG Opus (compatible WhatsApp)
+        await new Promise((resolve, reject) => {
+            exec(
+                `ffmpeg -i "${mp3Path}" -c:a libopus -b:a 64k -vbr on -y "${oggPath}"`,
+                (err, stdout, stderr) => {
+                    if (err) reject(err);
+                    else resolve();
+                }
+            );
+        });
 
-        console.error('Erreur commande TTS :', error);
+        // Lire le fichier OGG
+        const audioBuffer = fs.readFileSync(oggPath);
 
+        // Envoyer en note vocale
         await sock.sendMessage(chatId, {
-            text: '❌ Une erreur est survenue.\n\n> BRINDI-XMD'
+            audio: audioBuffer,
+            mimetype: 'audio/ogg; codecs=opus',
+            ptt: true
+        }, { quoted: message });
+
+        // Nettoyer les fichiers temporaires
+        if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
+        if (fs.existsSync(oggPath)) fs.unlinkSync(oggPath);
+
+    } catch (error) {
+        console.error('[TTS ERROR]', error);
+        await sock.sendMessage(chatId, {
+            text: `❌ Erreur lors de la génération audio.\n\nRéessaie plus tard.\n\n> BRINDI-XMD`
         }, { quoted: message });
     }
 }
