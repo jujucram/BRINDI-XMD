@@ -1,3 +1,18 @@
+const fs = require('fs');
+
+// ─── Helper : extraire proprement le numéro depuis un JID ───
+function extractPhone(jid) {
+    if (!jid) return null;
+    // Retire @s.whatsapp.net, @g.us etc
+    const raw = jid.split('@')[0];
+    // Retire le device ID (:12, :2, etc)
+    const clean = raw.split(':')[0];
+    // Garde uniquement les chiffres
+    const digits = clean.replace(/[^\d]/g, '');
+    if (!digits || digits.length < 7) return null;
+    return digits;
+}
+
 // Fonction utilitaire pour valider l'URL
 function isUrl(string) {
     try {
@@ -348,21 +363,91 @@ async function kickallCommand(sock, chatId, message) {
     }
 }
 
-// ─── VCF : Obtenir le contact d'un membre ───────────────
-async function vcfCommand(sock, chatId, senderId, replyMessage, message) {
 
-    let targetJid;
+// ─── VCF : Obtenir le contact d'un membre OU de tout le groupe ───
+async function vcfCommand(sock, chatId, senderId, replyMessage, message) {
+    const isGroup = chatId.endsWith('@g.us');
 
     const contextInfo =
         message.message?.extendedTextMessage?.contextInfo ||
         message.message?.ephemeralMessage?.message?.extendedTextMessage?.contextInfo;
 
     const mentioned = contextInfo?.mentionedJid?.[0];
+    const rawText = (
+        message.message?.conversation ||
+        message.message?.extendedTextMessage?.text || ''
+    ).trim().toLowerCase();
+
+    // ─── CAS 1 : .vcf all → exporter tout le groupe ─────────────
+    const wantsAll = rawText.includes('all') || rawText.includes('tout') || rawText.includes('group');
+
+    if (isGroup && wantsAll) {
+        try {
+            await sock.sendMessage(chatId, {
+                text: '⏳ Génération des contacts du groupe en cours...\n> BRINDI-XMD'
+            }, { quoted: message });
+
+            const groupMeta = await sock.groupMetadata(chatId);
+            const participants = groupMeta.participants;
+
+            if (!participants || participants.length === 0) {
+                return sock.sendMessage(chatId, {
+                    text: '❌ Impossible de récupérer les membres.\n> BRINDI-XMD'
+                }, { quoted: message });
+            }
+
+            const contacts = [];
+
+            for (const p of participants) {
+                const phone = extractPhone(p.id);
+                if (!phone) continue;
+
+                const vcard =
+`BEGIN:VCARD
+VERSION:3.0
+FN:+${phone}
+TEL;type=CELL;type=VOICE;waid=${phone}:+${phone}
+END:VCARD`;
+
+                contacts.push({ vcard });
+            }
+
+            if (contacts.length === 0) {
+                return sock.sendMessage(chatId, {
+                    text: '❌ Aucun numéro valide trouvé.\n> BRINDI-XMD'
+                }, { quoted: message });
+            }
+
+            const groupName = groupMeta.subject || 'Groupe';
+
+            await sock.sendMessage(chatId, {
+                contacts: {
+                    displayName: `${groupName} (${contacts.length} contacts)`,
+                    contacts
+                }
+            }, { quoted: message });
+
+            await sock.sendMessage(chatId, {
+                text: `✅ *${contacts.length} contacts* exportés avec succès !\n> BRINDI-XMD`
+            }, { quoted: message });
+
+        } catch (err) {
+            console.error('[VCF ALL ERROR]', err);
+            await sock.sendMessage(chatId, {
+                text: '❌ Erreur lors de l\'export du groupe.\n> BRINDI-XMD'
+            }, { quoted: message });
+        }
+
+        return;
+    }
+
+    // ─── CAS 2 : .vcf (reply / mention / soi-même) ──────────────
+    let targetJid;
 
     if (replyMessage) {
         targetJid =
-            replyMessage.key?.participant ||
-            replyMessage.key?.remoteJid;
+            contextInfo?.participant ||
+            contextInfo?.remoteJid;
     } else if (mentioned) {
         targetJid = mentioned;
     } else {
@@ -370,51 +455,33 @@ async function vcfCommand(sock, chatId, senderId, replyMessage, message) {
     }
 
     try {
+        const phone = extractPhone(targetJid);
 
-        // Exemple :
-        // 237673123456:45@s.whatsapp.net
-        // ↓
-        // 237673123456
-        const phoneNumber = targetJid
-            .split('@')[0]
-            .split(':')[0]
-            .replace(/[^\d]/g, '');
-
-        if (!phoneNumber || phoneNumber.length < 8) {
-            throw new Error('Numéro invalide');
+        if (!phone) {
+            return sock.sendMessage(chatId, {
+                text: '❌ Numéro invalide ou introuvable.\n> BRINDI-XMD'
+            }, { quoted: message });
         }
-
-        const displayName = `+${phoneNumber}`;
 
         const vcard =
 `BEGIN:VCARD
 VERSION:3.0
-FN:${displayName}
-TEL;type=CELL;type=VOICE;waid=${phoneNumber}:+${phoneNumber}
+FN:+${phone}
+TEL;type=CELL;type=VOICE;waid=${phone}:+${phone}
 END:VCARD`;
 
-        await sock.sendMessage(
-            chatId,
-            {
-                contacts: {
-                    displayName,
-                    contacts: [{ vcard }]
-                }
-            },
-            { quoted: message }
-        );
+        await sock.sendMessage(chatId, {
+            contacts: {
+                displayName: `+${phone}`,
+                contacts: [{ vcard }]
+            }
+        }, { quoted: message });
 
     } catch (err) {
-
         console.error('[VCF ERROR]', err);
-
-        await sock.sendMessage(
-            chatId,
-            {
-                text: '❌ Impossible de récupérer le numéro.'
-            },
-            { quoted: message }
-        );
+        await sock.sendMessage(chatId, {
+            text: '❌ Impossible de récupérer le numéro.\n> BRINDI-XMD'
+        }, { quoted: message });
     }
 }
 
