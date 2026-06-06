@@ -1,5 +1,4 @@
-// Nouvelles commandes : kickall, purge, antipurge, sanction, uptime, test, info, contact,
-//                       autorecording, restore, clan, loi, antimarabout
+
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -58,7 +57,18 @@ async function antipurgeCommand(sock, chatId, senderId, args, message) {
 
     if (!action) {
         return await sock.sendMessage(chatId, {
-            text: `🛡️ *Anti-Purge :* ${current}\n\n💡 *.antipurge on / off*\n> BRINDI-XMD`
+            text:
+`🛡️ *ANTI-PURGE*
+
+📊 Statut : ${current}
+
+💡 .antipurge on/off
+
+🔔 Alerte lorsqu'un membre est :
+• Promu administrateur
+• Rétrogradé administrateur
+
+> BRINDI-XMD`
         }, { quoted: message });
     }
 
@@ -70,9 +80,25 @@ async function antipurgeCommand(sock, chatId, senderId, args, message) {
     );
 
     await sock.sendMessage(chatId, {
-        text: `🛡️ *Anti-Purge :* ${action === 'on' ? '🟢 Activé' : '🔴 Désactivé'}\n> BRINDI-XMD`
+        text:
+`🛡️ *Anti-Purge :* ${action === 'on' ? '🟢 Activé' : '🔴 Désactivé'}
+> BRINDI-XMD`
     }, { quoted: message });
 }
+
+
+function isAntipurgeEnabled(chatId) {
+    try {
+        const state = JSON.parse(
+            fs.readFileSync(antipurgeFile)
+        );
+
+        return state[chatId] === true;
+    } catch {
+        return false;
+    }
+}
+
 
 // ─── SANCTION ────────────────────────────────────────
 async function sanctionCommand(sock, chatId, senderId, args, message) {
@@ -106,23 +132,40 @@ async function sanctionCommand(sock, chatId, senderId, args, message) {
 }
 
 // ─── UPTIME ──────────────────────────────────────────
+
+function formatUptime(sec) {
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = Math.floor(sec % 60);
+    const parts = [];
+    if (d) parts.push(`${d}j`);
+    if (h) parts.push(`${h}h`);
+    if (m) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ');
+}
+
 async function uptimeCommand(sock, chatId, message) {
-    const uptime = formatUptime(Math.floor(process.uptime()));
-    const ram = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
-    await sock.sendMessage(chatId, {
-        image: { url: BOT_IMG },
-        caption: `⏱️ *UPTIME BOT*\n\n│ ⏱️ *Uptime  :* ${uptime}\n│ 💾 *RAM     :* ${ram} MB\n│ 📦 *Version :* v1.0.0\n│ ✅ *Statut  :* En ligne\n> BRINDI-XMD`,
-        
-    }, { quoted: message });
+    try {
+        const uptime = Math.floor(process.uptime());
+
+        await sock.sendMessage(chatId, {
+            text: `⏱️ En ligne depuis : ${formatUptime(uptime)}✨\n> BRINDI-XMD`
+        }, { quoted: message });
+
+    } catch (e) {
+        console.error('[UPTIME ERROR]', e.message);
+    }
 }
 
 // ─── TEST ─────────────────────────────────────────────
 async function testCommand(sock, chatId, message) {
     const start = Date.now();
-    await sock.sendMessage(chatId, { react: { text: '🧪', key: message.key } });
+    await sock.sendMessage(chatId, { react: { text: '✨', key: message.key } });
     const ping = Date.now() - start;
     await sock.sendMessage(chatId, {
-        text: `🧪 *Test Bot*\n\n✅ *Statut :* Opérationnel\n⚡ *Ping   :* ${ping} ms\n⏱️ *Uptime :* ${formatUptime(Math.floor(process.uptime()))}\n> BRINDI-XMD`,
+        text: `✨ *Test Bot*\n\n✅ *Statut :* Opérationnel\n⚡ *Ping   :* ${ping} ms\n⏱️ *Uptime :* ${formatUptime(Math.floor(process.uptime()))}\n> BRINDI-XMD`,
         
     }, { quoted: message });
 }
@@ -132,7 +175,7 @@ async function infoCommand(sock, chatId, message) {
     const settings = require('../settings');
     await sock.sendMessage(chatId, {
         image: { url: BOT_IMG },
-        caption: `ℹ️ *INFO BOT*\n\n│ 🤖 *Nom     :* BRINDI-XMD\n│ 📦 *Version :* v1.0.0\n│ 🌍 *Mode    :* Privée\n│ ✅ *Statut  :* En ligne 24/7\n│ 🛡️ *Cmds    :* 100+ commandes\n> BRINDI-XMD`,
+        caption: `ℹ️ *INFO BOT*\n\n│ 🤖 *Nom     :* BRINDI-XMD\n│ 📦 *Version :* v1.0.0\n│ 🌍 *Mode    :* Privée\n│ ✅ *Statut  :* En ligne 24/7\n│ 🛡️ *Cmds    :* 154 commandes\n> BRINDI-XMD`,
         
     }, { quoted: message });
 }
@@ -249,6 +292,8 @@ async function loiCommand(sock, chatId, message) {
 }
 
 // ─── ANTIMARABOUT ─────────────────────────────────────
+const warnCount = {};
+
 async function antimaraboutCommand(sock, chatId, senderId, args, message) {
     const action = args[0]?.toLowerCase();
     let state = {};
@@ -259,7 +304,6 @@ async function antimaraboutCommand(sock, chatId, senderId, args, message) {
         return await sock.sendMessage(chatId, {
             image: { url: BOT_IMG },
             caption: `🔮 *ANTI-MARABOUT*\n\n📊 *Statut :* ${current}\n\n💡 .antimarabout on/off\n\n🛡️ Supprime automatiquement les messages\nde marabouts, arnaques et escroqueries.\n> BRINDI-XMD`,
-            
         }, { quoted: message });
     }
 
@@ -268,16 +312,22 @@ async function antimaraboutCommand(sock, chatId, senderId, args, message) {
     fs.writeFileSync(antimaraboutFile, JSON.stringify(state, null, 2));
     await sock.sendMessage(chatId, {
         text: `🔮 *Anti-Marabout :* ${action === 'on' ? '🟢 Activé' : '🔴 Désactivé'}\n${action === 'on' ? '> _Messages suspects seront supprimés._' : '> _Protection désactivée._'}\n> BRINDI-XMD`,
-        
     }, { quoted: message });
 }
 
-// Handler antimarabout (appelé dans main.js)
 async function handleAntimarabout(sock, chatId, senderId, message) {
     try {
         let state = {};
         try { state = JSON.parse(fs.readFileSync(antimaraboutFile)); } catch {}
         if (!state[chatId]) return false;
+
+        // ✅ Ignorer le bot lui-même
+        if (message.key.fromMe) return false;
+
+        // ✅ Ignorer les admins
+        const isAdmin = require('../lib/isAdmin');
+        const { isSenderAdmin } = await isAdmin(sock, chatId, senderId);
+        if (isSenderAdmin) return false;
 
         const text = (
             message.message?.conversation ||
@@ -288,8 +338,31 @@ async function handleAntimarabout(sock, chatId, senderId, message) {
         const isSpam = keywords.some(kw => text.includes(kw.toLowerCase()));
         if (!isSpam) return false;
 
+        // Supprimer le message
         await sock.sendMessage(chatId, { delete: message.key });
-        console.log(`🛡️ [antimarabout] Message suspect supprimé`);
+
+        // Système d'avertissements
+        const key = `${chatId}_${senderId}`;
+        warnCount[key] = (warnCount[key] || 0) + 1;
+        const count = warnCount[key];
+
+        if (count >= 3) {
+            warnCount[key] = 0;
+            await sock.sendMessage(chatId, {
+                text: `🚫 *@${senderId.split('@')[0]}* a été exclu après 3 avertissements pour spam de marabout.\n> BRINDI-XMD`,
+                mentions: [senderId]
+            });
+            try {
+                await sock.groupParticipantsUpdate(chatId, [senderId], 'remove');
+            } catch (e) {}
+        } else {
+            await sock.sendMessage(chatId, {
+                text: `⚠️ *@${senderId.split('@')[0]}*, message suspect supprimé !\n*Avertissement ${count}/3* — Au 3ème tu seras exclu.\n> BRINDI-XMD`,
+                mentions: [senderId]
+            });
+        }
+
+        console.log(`🛡️ [antimarabout] Avertissement ${count}/3 pour ${senderId}`);
         return true;
     } catch { return false; }
 }
@@ -299,5 +372,5 @@ module.exports = {
     uptimeCmdNew: uptimeCommand, testCmdNew: testCommand, 
     infoCmdNew: infoCommand, contactCmdNew: contactCommand,
     autorecordingCommand, restoreCommand, clanCommand, loiCommand,
-    antimaraboutCommand, handleAntimarabout
+    antimaraboutCommand, handleAntimarabout, isAntipurgeEnabled
 };
