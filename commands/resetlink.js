@@ -1,41 +1,71 @@
-async function resetlinkCommand(sock, chatId, senderId) {
+async function resetlinkCommand(sock, chatId, message) {
     try {
-        // Check if sender is admin
+        if (!chatId.endsWith('@g.us')) {
+            return await sock.sendMessage(chatId, {
+                text: `❌ Commande réservée aux groupes.\n> BRINDI-XMD`
+            }, { quoted: message });
+        }
+
         const groupMetadata = await sock.groupMetadata(chatId);
-        const isAdmin = groupMetadata.participants
-            .filter(p => p.admin)
-            .map(p => p.id)
-            .includes(senderId);
+        const participants = groupMetadata.participants;
 
-        // Check if bot is admin
-        const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-        const isBotAdmin = groupMetadata.participants
-            .filter(p => p.admin)
-            .map(p => p.id)
-            .includes(botId);
+        // ✅ Normalisation robuste : garde seulement les chiffres du numéro
+        const normalize = (jid) => (jid || '').split('@')[0].split(':')[0].replace(/\D/g, '');
 
-        if (!isAdmin) {
-            await sock.sendMessage(chatId, { text: '❌ Only admins can use this command!' });
-            return;
-        }
+        const botNum = normalize(sock.user?.id || sock.user?.jid || '');
+        const senderNum = normalize(message.key.participant || message.key.remoteJid);
 
-        if (!isBotAdmin) {
-            await sock.sendMessage(chatId, { text: '❌ Bot must be admin to reset group link!' });
-            return;
-        }
-
-        // Reset the group link
-        const newCode = await sock.groupRevokeInvite(chatId);
-        
-        // Send the new link
-        await sock.sendMessage(chatId, { 
-            text: `✅ Group link has been successfully reset\n\n📌 New link:\nhttps://chat.whatsapp.com/${newCode}`
+        // ✅ Recherche par inclusion (évite les faux négatifs dus au device ID)
+        const botParticipant = participants.find(p => {
+            const pNum = normalize(p.id);
+            return pNum === botNum || pNum.endsWith(botNum) || botNum.endsWith(pNum);
         });
 
+        const senderParticipant = participants.find(p => {
+            const pNum = normalize(p.id);
+            return pNum === senderNum || pNum.endsWith(senderNum) || senderNum.endsWith(pNum);
+        });
+
+        // ✅ Si bot pas trouvé dans les participants, on lui fait confiance quand même
+        const botIsAdmin = botParticipant
+            ? (botParticipant.admin === 'admin' || botParticipant.admin === 'superadmin')
+            : message.key.fromMe; // si fromMe = bot lui-même a envoyé = forcément dans le groupe
+
+        const senderIsAdmin =
+            message.key.fromMe || // bot lui-même
+            senderParticipant?.admin === 'admin' ||
+            senderParticipant?.admin === 'superadmin';
+
+        if (!botIsAdmin) {
+            return await sock.sendMessage(chatId, {
+                text: `❌ Le bot doit être *Administrateur* pour réinitialiser le lien.\n> BRINDI-XMD`
+            }, { quoted: message });
+        }
+
+        if (!senderIsAdmin) {
+            return await sock.sendMessage(chatId, {
+                text: `❌ Seuls les *Administrateurs* peuvent réinitialiser le lien.\n> BRINDI-XMD`
+            }, { quoted: message });
+        }
+
+        await sock.sendMessage(chatId, {
+            react: { text: '🔄', key: message.key }
+        });
+
+        await sock.groupRevokeInvite(chatId);
+        const newCode = await sock.groupInviteCode(chatId);
+        const newLink = `https://chat.whatsapp.com/${newCode}`;
+
+        await sock.sendMessage(chatId, {
+            text: `✅ Lien réinitialisé !\n\n🔗 ${newLink}\n> BRINDI-XMD`
+        }, { quoted: message });
+
     } catch (error) {
-        console.error('Error in resetlink command:', error);
-        await sock.sendMessage(chatId, { text: 'Failed to reset group link!' });
+        console.error('[RESETLINK ERROR]', error);
+        await sock.sendMessage(chatId, {
+            text: `❌ Erreur : ${error.message}\n> BRINDI-XMD`
+        }, { quoted: message });
     }
 }
 
-module.exports = resetlinkCommand; 
+module.exports = resetlinkCommand;
