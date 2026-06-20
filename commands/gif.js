@@ -1,34 +1,57 @@
 const axios = require('axios');
-const settings = require('../settings'); // Assuming the API key is stored here
 
-async function gifCommand(sock, chatId, query) {
-    const apiKey = settings.giphyApiKey; // Replace with your Giphy API Key
+const GIPHY_API_KEY = 'VOTRE_CLES_API';
 
-    if (!query) {
-        await sock.sendMessage(chatId, { text: 'Please provide a search term for the GIF.' });
-        return;
+async function gifCommand(sock, chatId, message, query) {
+    // 1. Vérification stricte du mot-clé
+    if (!query || !query.trim()) {
+        return await sock.sendMessage(chatId, {
+            text: `❌ Précise un mot-clé !\n💡 Exemple : *.gif chat drôle*\n\n> BRINDI-XMD`
+        }, { quoted: message });
     }
 
     try {
-        const response = await axios.get(`https://api.giphy.com/v1/gifs/search`, {
+        // 2. Appel à l'API Giphy avec filtres optimisés
+        const res = await axios.get('https://api.giphy.com/v1/gifs/search', {
             params: {
-                api_key: apiKey,
-                q: query,
+                api_key: GIPHY_API_KEY,
+                q: query.trim(),
                 limit: 1,
-                rating: 'g'
-            }
+                rating: 'g' // Filtre de sécurité (Tout public)
+            },
+            timeout: 6000 // Évite que le bot bloque indéfiniment si l'API rame
         });
 
-        const gifUrl = response.data.data[0]?.images?.downsized_medium?.url;
+        const gif = res.data?.data?.[0];
 
-        if (gifUrl) {
-            await sock.sendMessage(chatId, { video: { url: gifUrl }, caption: `Here is your GIF for "${query}"` });
-        } else {
-            await sock.sendMessage(chatId, { text: 'No GIFs found for your search term.' });
+        // 3. Si aucun résultat n'est trouvé
+        if (!gif) {
+            return await sock.sendMessage(chatId, {
+                text: `😕 Aucun GIF trouvé pour *"${query.trim()}"*.\n\n> BRINDI-XMD`
+            }, { quoted: message });
         }
+
+        // 4. Extraction sécurisée de l'URL du GIF (priorité au format léger pour mobile)
+        const gifUrl = gif.images?.downsized_medium?.url || 
+                       gif.images?.fixed_height?.url || 
+                       gif.images?.original?.url;
+
+        if (!gifUrl) throw new Error('URL du GIF introuvable dans la réponse');
+
+        // 5. Envoi au format "Autoplay / Loop" (Vrai style GIF WhatsApp)
+        await sock.sendMessage(chatId, {
+            video: { url: gifUrl },
+            caption: `🎞️ *Recherche :* ${query.trim()}\n\n> BRINDI-XMD`,
+            gifPlayback: true
+        }, { quoted: message });
+
     } catch (error) {
-        console.error('Error fetching GIF:', error);
-        await sock.sendMessage(chatId, { text: 'Failed to fetch GIF. Réessayez plus tard.' });
+        console.error('[GIF ERROR]', error.message);
+        
+        // Message d'erreur discret et propre pour le chat
+        await sock.sendMessage(chatId, {
+            text: `❌ Impossible de récupérer un GIF pour le moment. Réessaye.\n\n> BRINDI-XMD`
+        }, { quoted: message });
     }
 }
 
