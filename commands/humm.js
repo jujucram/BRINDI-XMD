@@ -1,89 +1,73 @@
-// Humm → Envoie le média dans les notes/MP du BOT lui-même
-// Totalement silencieux — rien n'apparaît dans la conversation courante
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 
 async function hummCommand(sock, chatId, senderId, replyMessage, message) {
-    if (!replyMessage) return; // Silencieux si pas de réponse
-
-    // ✅ TOUJOURS envoyer vers le compte du BOT lui-même (messages enregistrés)
-    // Comme ça, rien n'apparaît dans le groupe OU dans le PV où on a tapé .humm
-    const botJid = sock.user.id.replace(/:\d+@/, '@');
-
-    // Clé originale pour suppression du message source
-    const ctxInfo = message.message?.extendedTextMessage?.contextInfo;
-    const originalKey = ctxInfo ? {
-        remoteJid: chatId,
-        id: ctxInfo.stanzaId,
-        participant: ctxInfo.participant || undefined
-    } : null;
-
     try {
-        // ── Image ──────────────────────────────────
-        if (replyMessage.imageMessage) {
-            const stream = await downloadContentFromMessage(replyMessage.imageMessage, 'image');
-            let buf = Buffer.from([]);
-            for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
+        if (!replyMessage) return;
 
-            // Envoyer vers le bot lui-même (invisible pour l'utilisateur)
-            await sock.sendMessage(botJid, {
-                image: buf,
-                caption: `🥷 *BRINDI-XMD* — Média récupéré\n_Depuis :_ @${(senderId||'').split('@')[0]}`
-            });
+        const target =
+            replyMessage?.viewOnceMessage?.message ||
+            replyMessage?.viewOnceMessageV2?.message ||
+            replyMessage?.viewOnceMessageV2Extension?.message ||
+            replyMessage;
 
-            // Supprimer l'original silencieusement
-            if (originalKey) try { await sock.sendMessage(chatId, { delete: originalKey }); } catch {}
+        let mediaType;
+        let mediaMsg;
+
+        if (target.imageMessage) {
+            mediaType = 'image';
+            mediaMsg = target.imageMessage;
+        } else if (target.videoMessage) {
+            mediaType = 'video';
+            mediaMsg = target.videoMessage;
+        } else if (target.audioMessage) {
+            mediaType = 'audio';
+            mediaMsg = target.audioMessage;
+        } else {
             return;
         }
 
-        // ── Vidéo ──────────────────────────────────
-        if (replyMessage.videoMessage) {
-            const stream = await downloadContentFromMessage(replyMessage.videoMessage, 'video');
-            let buf = Buffer.from([]);
-            for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
+        const stream = await downloadContentFromMessage(
+            mediaMsg,
+            mediaType
+        );
 
-            await sock.sendMessage(botJid, {
-                video: buf,
-                caption: `🥷 *BRINDI-XMD* — Vidéo récupérée`
-            });
+        let buffer = Buffer.alloc(0);
 
-            if (originalKey) try { await sock.sendMessage(chatId, { delete: originalKey }); } catch {}
-            return;
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
         }
 
-        // ── Sticker ────────────────────────────────
-        if (replyMessage.stickerMessage) {
-            const stream = await downloadContentFromMessage(replyMessage.stickerMessage, 'sticker');
-            let buf = Buffer.from([]);
-            for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
-
-            await sock.sendMessage(botJid, {
-                image: buf,
-                caption: `🥷 *BRINDI-XMD* — Sticker récupéré`
+        if (mediaType === 'image') {
+            await sock.sendMessage(senderId, {
+                image: buffer,
+                caption: '🥷🏾 BRINDI-XMD'
             });
-
-            if (originalKey) try { await sock.sendMessage(chatId, { delete: originalKey }); } catch {}
-            return;
         }
 
-        // ── Audio ──────────────────────────────────
-        if (replyMessage.audioMessage) {
-            const stream = await downloadContentFromMessage(replyMessage.audioMessage, 'audio');
-            let buf = Buffer.from([]);
-            for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
-
-            await sock.sendMessage(botJid, {
-                audio: buf,
-                mimetype: 'audio/mp4',
-                ptt: replyMessage.audioMessage.ptt || false
+        if (mediaType === 'video') {
+            await sock.sendMessage(senderId, {
+                video: buffer,
+                caption: '🥷🏾 BRINDI-XMD'
             });
-
-            if (originalKey) try { await sock.sendMessage(chatId, { delete: originalKey }); } catch {}
-            return;
         }
 
-    } catch (e) {
-        console.error('❌ [humm]', e.message);
-        // Silence total — aucun message visible
+        if (mediaType === 'audio') {
+            await sock.sendMessage(senderId, {
+                audio: buffer,
+                mimetype: mediaMsg.mimetype || 'audio/mp4',
+                ptt: mediaMsg.ptt || false
+            });
+        }
+
+        // Supprime la commande .humm
+        try {
+            await sock.sendMessage(chatId, {
+                delete: message.key
+            });
+        } catch {}
+
+    } catch (err) {
+        console.error('[HUMM ERROR]', err);
     }
 }
 
