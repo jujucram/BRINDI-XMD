@@ -1,172 +1,125 @@
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const isAdmin = require('../lib/isAdmin');
-const isOwnerOrSudo = require('../lib/isOwner');
 
 async function gstatusCommand(sock, chatId, senderId, args, message) {
 
     if (!chatId.endsWith('@g.us')) {
         return await sock.sendMessage(chatId, {
-            text:
-`❌ *Commande disponible uniquement dans les groupes !*
-
-> BRINDI-XMD`
+            text: '❌ *Commande disponible uniquement dans les groupes !*\n\n> BRINDI-XMD'
         }, { quoted: message });
     }
 
-    const { isSenderAdmin } =
-        await isAdmin(sock, chatId, senderId);
+    var adminCheck = await isAdmin(sock, chatId, senderId);
+    var isSenderAdmin = adminCheck.isSenderAdmin;
 
     if (!isSenderAdmin) {
         return await sock.sendMessage(chatId, {
-            text:
-`❌ *Commande réservée aux administrateurs !*
-
-> BRINDI-XMD`
+            text: '❌ *Commande réservée aux administrateurs !*\n\n> BRINDI-XMD'
         }, { quoted: message });
     }
 
-    const action = args[0]?.toLowerCase();
+    var action = args[0] ? args[0].toLowerCase() : null;
 
     try {
+        var meta = await sock.groupMetadata(chatId);
+        var participants = meta.participants;
+        var total = participants.length;
+        var admins = participants.filter(function(p) { return p.admin; }).length;
+        var members = total - admins;
 
-        const meta =
-            await sock.groupMetadata(chatId);
-
-        const participants = meta.participants;
-
-        const total = participants.length;
-
-        const admins =
-            participants.filter(p => p.admin).length;
-
-        const members = total - admins;
-
-        const createdAt = meta.creation
-            ? new Date(meta.creation * 1000)
-                .toLocaleDateString('fr-FR')
+        var createdAt = meta.creation
+            ? new Date(meta.creation * 1000).toLocaleDateString('fr-FR')
             : 'Inconnu';
 
+        // ─── AFFICHAGE DU STATUS DU GROUPE ───────────────────────────────────
         if (!action) {
-
-            let adminList = '';
-
+            var adminList = '';
             participants
-                .filter(p => p.admin)
-                .forEach((p) => {
-
-                    const role =
-                        p.admin === 'superadmin'
-                            ? '👑'
-                            : '⭐';
-
-                    adminList +=
-`│ ${role} +${p.id.split('@')[0]}
-`;
+                .filter(function(p) { return p.admin; })
+                .forEach(function(p) {
+                    var role = p.admin === 'superadmin' ? '👑' : '⭐';
+                    adminList += '│ ' + role + ' +' + p.id.split('@')[0] + '\n';
                 });
 
             return await sock.sendMessage(chatId, {
-
-                image: {
-                    url: './assets/IMG-20240812-WA0097.jpg'
-                },
-
-                caption:
-`📊 *STATUT DU GROUPE*
-
-👥 *Groupe :* ${meta.subject}
-📅 *Créé le :* ${createdAt}
-🆔 *JID :* \`${chatId}\`
-
-┌─────────────────────
-│ 👤 Membres : *${members}*
-│ 👑 Admins : *${admins}*
-│ 📊 Total : *${total}*
-│ 🔒 Fermé : *${meta.announce ? 'Oui' : 'Non'}*
-│ 🔐 Restriction : *${meta.restrict ? 'Admins uniquement' : 'Tous'}*
-└─────────────────────
-
-👑 *Admins du groupe*
-┌─────────────────────
-${adminList}└─────────────────────
-
-📌 *Options disponibles*
-│ ⬡ .gstatus desc <texte>
-│ ⬡ .gstatus nom <texte>
-
-> BRINDI-XMD`
-
+                image: { url: './assets/IMG-20240812-WA0097.jpg' },
+                caption: '📊 *STATUT DU GROUPE*\n\n👥 *Groupe :* ' + meta.subject + '\n📅 *Créé le :* ' + createdAt + '\n🆔 *JID :* `' + chatId + '`\n\n┌─────────────────────\n│ 👤 Membres : *' + members + '*\n│ 👑 Admins : *' + admins + '*\n│ 📊 Total : *' + total + '*\n│ 🔒 Fermé : *' + (meta.announce ? 'Oui' : 'Non') + '*\n│ 🔐 Restriction : *' + (meta.restrict ? 'Admins uniquement' : 'Tous') + '*\n└─────────────────────\n\n👑 *Admins du groupe*\n┌─────────────────────\n' + adminList + '└─────────────────────\n\n📌 *Options disponibles*\n│ ⬡ .gstatus desc <texte>\n│ ⬡ .gstatus nom <texte>\n│ ⬡ .gstatus setpp (En répondant à une image)\n\n> BRINDI-XMD'
             }, { quoted: message });
         }
 
-        const { isBotAdmin } =
-            await isAdmin(sock, chatId, senderId);
-
+        // ─── ACTION : DESCRIPTION ─────────────────────────────────────────────
         if (action === 'desc') {
-
-            const desc = args.slice(1).join(' ');
-
+            var desc = args.slice(1).join(' ');
             if (!desc) {
                 return await sock.sendMessage(chatId, {
-                    text:
-`❌ Spécifie une description !
-
-📌 Exemple :
-.gstatus desc Mon super groupe
-
-> BRINDI-XMD`
+                    text: '❌ Spécifie une description !\n\n📌 Exemple :\n.gstatus desc Mon super groupe\n\n> BRINDI-XMD'
                 }, { quoted: message });
             }
-
             await sock.groupUpdateDescription(chatId, desc);
-
             return await sock.sendMessage(chatId, {
-                text:
-`✅ *Description du groupe mise à jour !*
-
-📝 *Nouvelle description :*
-${desc}
-
-> BRINDI-XMD`
+                text: '✅ *Description du groupe mise à jour !*\n\n📝 *Nouvelle description :*\n' + desc + '\n\n> BRINDI-XMD'
             }, { quoted: message });
         }
 
+        // ─── ACTION : NOM ─────────────────────────────────────────────────────
         if (action === 'nom') {
-
-            const nom = args.slice(1).join(' ');
-
+            var nom = args.slice(1).join(' ');
             if (!nom) {
                 return await sock.sendMessage(chatId, {
-                    text:
-`❌ Spécifie le nouveau nom du groupe !
+                    text: '❌ Spécifie le nouveau nom du groupe !\n\n📌 Exemple :\n.gstatus nom Mon Groupe 2.0\n\n> BRINDI-XMD'
+                }, { quoted: message });
+            }
+            await sock.groupUpdateSubject(chatId, nom);
+            return await sock.sendMessage(chatId, {
+                text: '✅ *Nom du groupe mis à jour !*\n\n📛 *Nouveau nom :*\n' + nom + '\n\n> BRINDI-XMD'
+            }, { quoted: message });
+        }
 
-📌 Exemple :
-.gstatus nom Mon Groupe 2.0
+        // ─── ACTION : PHOTO DE PROFIL ──────────────────────────────────────────
+        if (action === 'setpp' || action === 'pp') {
+            var contextInfo =
+                (message.message && message.message.extendedTextMessage && message.message.extendedTextMessage.contextInfo) ||
+                (message.message && message.message.ephemeralMessage && message.message.ephemeralMessage.message && message.message.ephemeralMessage.message.extendedTextMessage && message.message.ephemeralMessage.message.extendedTextMessage.contextInfo) ||
+                null;
 
-> BRINDI-XMD`
+            var quotedMsg = contextInfo && contextInfo.quotedMessage;
+
+            if (!quotedMsg || (!quotedMsg.imageMessage && !(quotedMsg.ephemeralMessage && quotedMsg.ephemeralMessage.message && quotedMsg.ephemeralMessage.message.imageMessage))) {
+                return await sock.sendMessage(chatId, {
+                    text: '❌ Réponds à une image avec .gstatus setpp pour changer la photo du groupe.\n\n> BRINDI-XMD'
                 }, { quoted: message });
             }
 
-            await sock.groupUpdateSubject(chatId, nom);
+            var targetImage = quotedMsg.imageMessage || (quotedMsg.ephemeralMessage && quotedMsg.ephemeralMessage.message && quotedMsg.ephemeralMessage.message.imageMessage);
 
-            return await sock.sendMessage(chatId, {
-                text:
-`✅ *Nom du groupe mis à jour !*
+            await sock.sendMessage(chatId, { react: { text: '🔄', key: message.key } });
 
-📛 *Nouveau nom :*
-${nom}
+            try {
+                var stream = await downloadContentFromMessage(targetImage, 'image');
+                var chunks = [];
+                for await (var chunk of stream) {
+                    chunks.push(chunk);
+                }
+                var buffer = Buffer.concat(chunks);
 
-> BRINDI-XMD`
-            }, { quoted: message });
+                await sock.updateProfilePicture(chatId, buffer);
+
+                await sock.sendMessage(chatId, { react: { text: '✅', key: message.key } });
+                return await sock.sendMessage(chatId, {
+                    text: '📸 *Photo de profil du groupe mise à jour avec succès !* 🔥\n\n> BRINDI-XMD'
+                }, { quoted: message });
+            } catch (downloadErr) {
+                console.error('[gstatus setpp]', downloadErr.message);
+                return await sock.sendMessage(chatId, {
+                    text: '❌ Échec du téléversement de l\'image. Réessayez.\n\n> BRINDI-XMD'
+                }, { quoted: message });
+            }
         }
 
     } catch (e) {
-
-        console.error('❌ [gstatus]', e.message);
-
+        console.error('[gstatus]', e.message);
         await sock.sendMessage(chatId, {
-            text:
-`❌ Impossible de récupérer les informations du groupe.
-
-> BRINDI-XMD`
+            text: '❌ Impossible de modifier ou récupérer les infos du groupe.\n\n> BRINDI-XMD'
         }, { quoted: message });
     }
 }
