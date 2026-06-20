@@ -1,41 +1,87 @@
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
-const settings = require('../settings');
 
 async function ibCommand(sock, chatId, message) {
-    const ownerJid = settings.ownerNumber + '@s.whatsapp.net';
-
-    const quoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    const quotedImage = quoted?.imageMessage;
-    const quotedVideo = quoted?.videoMessage;
-
-    if (!quotedImage && !quotedVideo) {
-        await sock.sendMessage(chatId, { text: '❌ Réponds à un média vue unique (image ou vidéo).' }, { quoted: message });
-        return;
-    }
-
     try {
-        if (quotedImage) {
-            const stream = await downloadContentFromMessage(quotedImage, 'image');
-            let buffer = Buffer.from([]);
-            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-            // Envoyer uniquement en PV du propriétaire
-            await sock.sendMessage(ownerJid, { 
-                image: buffer, 
-                caption: `📩 *Vue unique reçue*\n👤 De: @${message.key.participant?.split('@')[0] || message.key.remoteJid?.split('@')[0]}\n💬 Groupe: ${chatId.endsWith('@g.us') ? chatId : 'Privé'}`
-            });
-        } else if (quotedVideo) {
-            const stream = await downloadContentFromMessage(quotedVideo, 'video');
-            let buffer = Buffer.from([]);
-            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-            // Envoyer uniquement en PV du propriétaire
-            await sock.sendMessage(ownerJid, { 
-                video: buffer, 
-                caption: `📩 *Vue unique reçue*\n👤 De: @${message.key.participant?.split('@')[0] || message.key.remoteJid?.split('@')[0]}\n💬 Groupe: ${chatId.endsWith('@g.us') ? chatId : 'Privé'}`
-            });
+        const quoted =
+            message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+        if (!quoted) {
+            return await sock.sendMessage(chatId, {
+                text: `⚠️ *Répondez à une photo, vidéo ou audio vue unique.*\n\n> BRINDI-XMD`
+            }, { quoted: message });
         }
-        // Pas de réponse dans le groupe ou en privé — silence total
-    } catch (error) {
-        console.error('Erreur commande .ib:', error);
+
+        // Extraction du contenu vue unique
+        const innerMsg =
+            quoted.viewOnceMessageV2?.message ||
+            quoted.viewOnceMessageV2Extension?.message ||
+            quoted;
+
+        // 📸 Image
+        if (innerMsg.imageMessage) {
+            const stream = await downloadContentFromMessage(
+                innerMsg.imageMessage,
+                'image'
+            );
+
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
+
+            return await sock.sendMessage(chatId, {
+                image: buffer,
+                caption: `📸 *Vue unique récupérée avec succès !*\n\n> BRINDI-XMD`
+            }, { quoted: message });
+        }
+
+        // 🎥 Vidéo
+        if (innerMsg.videoMessage) {
+            const stream = await downloadContentFromMessage(
+                innerMsg.videoMessage,
+                'video'
+            );
+
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
+
+            return await sock.sendMessage(chatId, {
+                video: buffer,
+                caption: `🎥 *Vue unique récupérée avec succès !*\n\n> BRINDI-XMD`
+            }, { quoted: message });
+        }
+
+        // 🎵 Audio
+        if (innerMsg.audioMessage) {
+            const stream = await downloadContentFromMessage(
+                innerMsg.audioMessage,
+                'audio'
+            );
+
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                buffer = Buffer.concat([buffer, chunk]);
+            }
+
+            return await sock.sendMessage(chatId, {
+                audio: buffer,
+                mimetype: 'audio/mp4',
+                ptt: innerMsg.audioMessage.ptt || false
+            }, { quoted: message });
+        }
+
+        await sock.sendMessage(chatId, {
+            text: `❌ *Ce message n'est pas un média vue unique.*\n\n> BRINDI-XMD`
+        }, { quoted: message });
+
+    } catch (e) {
+        console.error('[VIEWONCE ERROR]', e);
+
+        await sock.sendMessage(chatId, {
+            text: `❌ *Erreur :* ${e.message}\n\n> BRINDI-XMD`
+        }, { quoted: message });
     }
 }
 
