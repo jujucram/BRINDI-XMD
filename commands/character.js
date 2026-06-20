@@ -4,42 +4,44 @@ const { channelInfo } = require('../lib/messageConfig');
 async function characterCommand(sock, chatId, message) {
     let userToAnalyze;
     
-    // Check for mentioned users
+    // Vérifier si un utilisateur est mentionné
     if (message.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
         userToAnalyze = message.message.extendedTextMessage.contextInfo.mentionedJid[0];
     }
-    // Check for replied message
+    // Vérifier si on répond à un message (reply)
     else if (message.message?.extendedTextMessage?.contextInfo?.participant) {
         userToAnalyze = message.message.extendedTextMessage.contextInfo.participant;
     }
     
+    // Si personne n'est ciblé
     if (!userToAnalyze) {
         await sock.sendMessage(chatId, { 
-            text: 'Please mention someone or reply to their message to analyze their character!', 
-                });
+            text: '⚠️ Veuillez mentionner quelqu\'un ou répondre à son message pour analyser son caractère !' 
+        }, { quoted: message });
         return;
     }
 
     try {
-        // Get user's profile picture
+        // Récupérer la photo de profil de l'utilisateur ciblé
         let profilePic;
         try {
             profilePic = await sock.profilePictureUrl(userToAnalyze, 'image');
         } catch {
-            profilePic = 'https://i.imgur.com/2wzGhpF.jpeg'; // Default image if no profile pic
+            profilePic = 'https://i.imgur.com/2wzGhpF.jpeg'; // Image par défaut s'il n'en a pas
         }
 
+        // Liste des traits de caractère en français
         const traits = [
-            "Intelligent", "Creative", "Determined", "Ambitious", "Caring",
-            "Charismatic", "Confident", "Empathetic", "Energetic", "Friendly",
-            "Generous", "Honest", "Humorous", "Imaginative", "Independent",
-            "Intuitive", "Kind", "Logical", "Loyal", "Optimistic",
-            "Passionate", "Patient", "Persistent", "Reliable", "Resourceful",
-            "Sincere", "Thoughtful", "Understanding", "Versatile", "Wise"
+            "Intelligent(e)", "Créatif(ve)", "Déterminé(e)", "Ambitieux(se)", "Attentionné(e)",
+            "Charismatique", "Confiant(e)", "Empathique", "Énergique", "Amical(e)",
+            "Généreux(se)", "Honnête", "Drôle", "Imaginatif(ve)", "Indépendant(e)",
+            "Intuitif(ve)", "Gentil(le)", "Logique", "Fidèle", "Optimiste",
+            "Passionné(e)", "Patient(e)", "Persévérant(e)", "Fiable", "Débrouillard(e)",
+            "Sincère", "Réfléchi(e)", "Compréhensif(ve)", "Polyvalent(e)", "Sage"
         ];
 
-        // Get 3-5 random traits
-        const numTraits = Math.floor(Math.random() * 3) + 3; // Random number between 3 and 5
+        // Obtenir 3 à 5 traits de manière aléatoire
+        const numTraits = Math.floor(Math.random() * 3) + 3; // Nombre entre 3 et 5
         const selectedTraits = [];
         for (let i = 0; i < numTraits; i++) {
             const randomTrait = traits[Math.floor(Math.random() * traits.length)];
@@ -48,34 +50,35 @@ async function characterCommand(sock, chatId, message) {
             }
         }
 
-        // Calculate random percentages for each trait
+        // Calculer des pourcentages aléatoires pour chaque trait sélectionné
         const traitPercentages = selectedTraits.map(trait => {
-            const percentage = Math.floor(Math.random() * 41) + 60; // Random number between 60-100
-            return `${trait}: ${percentage}%`;
+            const percentage = Math.floor(Math.random() * 41) + 60; // Nombre aléatoire entre 60 et 100
+            return `• ${trait} : ${percentage}%`;
         });
 
-        // Create character analysis message
-        const analysis = `🔮 *Character Analysis* 🔮\n\n` +
-            `👤 *User:* ${userToAnalyze.split('@')[0]}\n\n` +
-            `✨ *Key Traits:*\n${traitPercentages.join('\n')}\n\n` +
-            `🎯 *Overall Rating:* ${Math.floor(Math.random() * 21) + 80}%\n\n` +
-            `Note: This is a fun analysis and should not be taken seriously!`;
+        // 🟢 FORMATAGE DU NUMÉRO (Ajout du '+' avant l'identifiant)
+        const formatNumber = "+" + userToAnalyze.split('@')[0];
 
-        // Send the analysis with the user's profile picture
+        // Création du message d'analyse final
+        const analysis = `🔮 *Analyse de Caractère* 🔮\n\n` +
+            `👤 *Utilisateur :* ${formatNumber}\n\n` +
+            `✨ *Traits Principaux :*\n${traitPercentages.join('\n')}\n\n` +
+            `🎯 *Note Globale :* ${Math.floor(Math.random() * 21) + 80}%\n\n` +
+            `> BRINDI-XMD`;
+
+        // Envoyer l'analyse avec la photo de profil
         await sock.sendMessage(chatId, {
             image: { url: profilePic },
             caption: analysis,
-            mentions: [userToAnalyze],
-            
-        });
+            mentions: [userToAnalyze] // Permet de rendre le tag cliquable si besoin
+        }, { quoted: message });
 
     } catch (error) {
-        console.error('Error in character command:', error);
+        console.error('[CHARACTER ERROR]', error);
         await sock.sendMessage(chatId, { 
-            text: 'Failed to analyze character! Try again later.',
-             
-        });
+            text: '❌ Échec de l\'analyse du caractère ! Réessayez plus tard.' 
+        }, { quoted: message });
     }
 }
 
-module.exports = characterCommand; 
+module.exports = characterCommand;
