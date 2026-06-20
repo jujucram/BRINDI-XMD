@@ -1,61 +1,127 @@
 const axios = require('axios');
 
 async function codeaiCommand(sock, chatId, senderId, args, message) {
-    const prompt = args.join(' ').trim();
+    var prompt = args.join(' ').trim();
 
     if (!prompt) {
         return await sock.sendMessage(chatId, {
-            text: `💻 *Usage :* .codeai <demande>\n💡 _Exemple : .codeai crée une fonction Python qui trie une liste_\n> BRINDI-XMD`,
+            text: '💻 *Usage :* `.codeai <votre demande de code>`\n\n💡 *Exemple :* `.codeai crée une fonction Python qui trie une liste`\n\n> BRINDI-XMD'
         }, { quoted: message });
     }
 
     await sock.sendMessage(chatId, { react: { text: '💻', key: message.key } });
 
-    const sysPrompt = "Tu es un expert développeur. Génère du code propre, commenté et fonctionnel. Réponds avec le code et une courte explication.";
-    const fullPrompt = `${sysPrompt}\n\n${prompt}`;
-    const q = encodeURIComponent(fullPrompt);
+    var sysPrompt = 'Tu es un expert développeur. Génère du code propre, commenté et fonctionnel. Réponds avec le code bien formaté en markdown et une courte explication en français.';
+    var fullPrompt = sysPrompt + '\n\nDemande : ' + prompt;
+    var encoded = encodeURIComponent(fullPrompt);
 
-    const apis = [
-        () => axios.get(`https://text.pollinations.ai/${q}`, { timeout: 25000, responseType: 'text' })
-            .then(r => typeof r.data === 'string' && r.data.length > 10 ? r.data : null),
+    var result = null;
 
-        () => axios.get(`https://api.giftedtech.my.id/api/ai/geminiai?apikey=gifted&q=${q}`, { timeout: 20000 })
-            .then(r => r.data?.result || r.data?.answer || null),
+    // ============================
+    // API 1 : Pollinations POST (OpenAI-compatible, sans clé, très stable)
+    // ============================
+    try {
+        console.log('[CODEAI] API 1 - Pollinations POST...');
+        var r1 = await axios.post(
+            'https://text.pollinations.ai/openai',
+            {
+                model: 'openai',
+                messages: [
+                    { role: 'system', content: sysPrompt },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.3,
+                max_tokens: 2000
+            },
+            { timeout: 25000, headers: { 'Content-Type': 'application/json' } }
+        );
+        var a1 = r1.data && r1.data.choices && r1.data.choices[0] && r1.data.choices[0].message && r1.data.choices[0].message.content;
+        if (a1 && a1.trim().length > 10) {
+            result = a1.trim();
+            console.log('[CODEAI] API 1 OK ✅');
+        }
+    } catch (e1) {
+        console.warn('[CODEAI] API 1 échouée :', e1.message);
+    }
 
-        () => axios.get(`https://api.siputzx.my.id/api/ai/gemini-pro?content=${q}`, { timeout: 20000 })
-            .then(r => r.data?.message || r.data?.data || null),
-
-        () => axios.get(`https://api.ryzendesu.vip/api/ai/gemini?text=${q}`, { timeout: 20000 })
-            .then(r => r.data?.message || r.data?.answer || null),
-    ];
-
-    let result = null;
-
-    for (const api of apis) {
+    // ============================
+    // API 2 : Pollinations GET (fallback rapide)
+    // ============================
+    if (!result) {
         try {
-            const res = await api();
-            if (res && res.trim().length > 10) {
-                result = res.trim();
-                break;
+            console.log('[CODEAI] API 2 - Pollinations GET...');
+            var r2 = await axios.get(
+                'https://text.pollinations.ai/' + encoded + '?model=openai',
+                { timeout: 20000 }
+            );
+            var a2 = r2.data;
+            if (a2 && typeof a2 === 'string' && a2.trim().length > 10) {
+                result = a2.trim();
+                console.log('[CODEAI] API 2 OK ✅');
             }
-        } catch {
-            continue;
+        } catch (e2) {
+            console.warn('[CODEAI] API 2 échouée :', e2.message);
         }
     }
 
+    // ============================
+    // API 3 : Siputzx Blackbox AI (spécialisé code)
+    // ============================
     if (!result) {
+        try {
+            console.log('[CODEAI] API 3 - Siputzx Blackbox...');
+            var r3 = await axios.get(
+                'https://api.siputzx.my.id/api/ai/blackboxai?content=' + encoded,
+                { timeout: 20000, headers: { 'user-agent': 'Mozilla/5.0' } }
+            );
+            var a3 = r3.data && (r3.data.data || r3.data.result || r3.data.message);
+            if (a3 && a3.toString().trim().length > 10) {
+                result = a3.toString().trim();
+                console.log('[CODEAI] API 3 OK ✅');
+            }
+        } catch (e3) {
+            console.warn('[CODEAI] API 3 échouée :', e3.message);
+        }
+    }
+
+    // ============================
+    // API 4 : Ryzendesu Gemini (bon pour le code)
+    // ============================
+    if (!result) {
+        try {
+            console.log('[CODEAI] API 4 - Ryzendesu Gemini...');
+            var r4 = await axios.get(
+                'https://api.ryzendesu.vip/api/ai/gemini?text=' + encoded,
+                { timeout: 20000, headers: { 'user-agent': 'Mozilla/5.0' } }
+            );
+            var a4 = r4.data && (r4.data.answer || r4.data.message || r4.data.result);
+            if (a4 && a4.toString().trim().length > 10) {
+                result = a4.toString().trim();
+                console.log('[CODEAI] API 4 OK ✅');
+            }
+        } catch (e4) {
+            console.warn('[CODEAI] API 4 échouée :', e4.message);
+        }
+    }
+
+    // ============================
+    // RÉSULTAT FINAL
+    // ============================
+
+    if (!result) {
+        await sock.sendMessage(chatId, { react: { text: '❌', key: message.key } });
         return await sock.sendMessage(chatId, {
-            text: `❌ *L'IA Code est temporairement indisponible.*\n_Réessaie dans quelques instants._\n> BRINDI-XMD`,
+            text: '❌ *L\'IA Code est temporairement indisponible.*\n_Toutes les API sont surchargées, réessaie dans un instant._\n\n> BRINDI-XMD'
         }, { quoted: message });
     }
 
-    const maxLen = 3500;
-    const text = result.length > maxLen
-        ? result.substring(0, maxLen) + '\n_[Tronqué]_'
+    var maxLen = 3800;
+    var text = result.length > maxLen
+        ? result.substring(0, maxLen) + '\n\n⚠️ _[Code tronqué car trop long pour WhatsApp]_'
         : result;
 
     await sock.sendMessage(chatId, {
-        text: `💻 *Code pour :* ${prompt}\n\n${text}\n\n> BRINDI-XMD`,
+        text: '💻 *Code pour :* _' + prompt + '_\n\n' + text + '\n\n> BRINDI-XMD'
     }, { quoted: message });
 
     await sock.sendMessage(chatId, { react: { text: '✅', key: message.key } });
