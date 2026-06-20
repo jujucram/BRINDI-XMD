@@ -1,17 +1,5 @@
 const fs = require('fs');
 
-// ─── Helper : extraire proprement le numéro depuis un JID ───
-function extractPhone(jid) {
-    if (!jid) return null;
-    // Retire @s.whatsapp.net, @g.us etc
-    const raw = jid.split('@')[0];
-    // Retire le device ID (:12, :2, etc)
-    const clean = raw.split(':')[0];
-    // Garde uniquement les chiffres
-    const digits = clean.replace(/[^\d]/g, '');
-    if (!digits || digits.length < 7) return null;
-    return digits;
-}
 
 // Fonction utilitaire pour valider l'URL
 function isUrl(string) {
@@ -364,7 +352,14 @@ async function kickallCommand(sock, chatId, message) {
 }
 
 
-// ─── VCF : Obtenir le contact d'un membre OU de tout le groupe ───
+async function extractPhoneReal(sock, jid) {
+    if (!jid) return null;
+    // On extrait proprement la partie numérique du JID (ex: 237673355468@s.whatsapp.net -> 237673355468)
+    const raw = jid.split('@')[0].split(':')[0].replace(/[^\d]/g, '');
+    if (!raw || raw.length < 7) return null;
+    return raw;
+}
+
 async function vcfCommand(sock, chatId, senderId, replyMessage, message) {
     const isGroup = chatId.endsWith('@g.us');
 
@@ -372,19 +367,18 @@ async function vcfCommand(sock, chatId, senderId, replyMessage, message) {
         message.message?.extendedTextMessage?.contextInfo ||
         message.message?.ephemeralMessage?.message?.extendedTextMessage?.contextInfo;
 
-    const mentioned = contextInfo?.mentionedJid?.[0];
     const rawText = (
         message.message?.conversation ||
         message.message?.extendedTextMessage?.text || ''
     ).trim().toLowerCase();
 
-    // ─── CAS 1 : .vcf all → exporter tout le groupe ─────────────
+    // ─── CAS 1 : .vcf all → Exporter tout le groupe ─────────────
     const wantsAll = rawText.includes('all') || rawText.includes('tout') || rawText.includes('group');
 
     if (isGroup && wantsAll) {
         try {
             await sock.sendMessage(chatId, {
-                text: '⏳ Génération des contacts du groupe en cours...\n> BRINDI-XMD'
+                text: '⏳ Analyse des membres et génération du fichier contact VCF...\n\n> BRINDI-XMD'
             }, { quoted: message });
 
             const groupMeta = await sock.groupMetadata(chatId);
@@ -392,17 +386,17 @@ async function vcfCommand(sock, chatId, senderId, replyMessage, message) {
 
             if (!participants || participants.length === 0) {
                 return sock.sendMessage(chatId, {
-                    text: '❌ Impossible de récupérer les membres.\n> BRINDI-XMD'
+                    text: '❌ Impossible de charger les membres du groupe.\n\n> BRINDI-XMD'
                 }, { quoted: message });
             }
 
             const contacts = [];
 
             for (const p of participants) {
-                const phone = extractPhone(p.id);
+                const phone = await extractPhoneReal(sock, p.id);
                 if (!phone) continue;
 
-                const vcard =
+                const vcard = 
 `BEGIN:VCARD
 VERSION:3.0
 FN:+${phone}
@@ -414,76 +408,82 @@ END:VCARD`;
 
             if (contacts.length === 0) {
                 return sock.sendMessage(chatId, {
-                    text: '❌ Aucun numéro valide trouvé.\n> BRINDI-XMD'
+                    text: '❌ Aucun numéro valide extrait.\n\n> BRINDI-XMD'
                 }, { quoted: message });
             }
 
-            const groupName = groupMeta.subject || 'Groupe';
+            const groupName = groupMeta.subject || 'Groupe WhatsApp';
 
+            // Envoi de la liste complète sous forme de multi-contacts cliquables
             await sock.sendMessage(chatId, {
                 contacts: {
                     displayName: `${groupName} (${contacts.length} contacts)`,
-                    contacts
+                    contacts: contacts
                 }
             }, { quoted: message });
 
             await sock.sendMessage(chatId, {
-                text: `✅ *${contacts.length} contacts* exportés avec succès !\n> BRINDI-XMD`
+                text: `✅ *${contacts.length} contacts* du groupe ont été exportés avec succès ! 🔥\n\n> BRINDI-XMD`
             }, { quoted: message });
 
         } catch (err) {
             console.error('[VCF ALL ERROR]', err);
             await sock.sendMessage(chatId, {
-                text: '❌ Erreur lors de l\'export du groupe.\n> BRINDI-XMD'
+                text: '❌ Une erreur est survenue lors de l\'exportation collective.\n\n> BRINDI-XMD'
             }, { quoted: message });
         }
-
         return;
     }
 
-    // ─── CAS 2 : .vcf (reply / mention / soi-même) ──────────────
-    let targetJid;
+    // ─── CAS 2 : .vcf ciblé (Cité, mentionné ou soi-même) ──────────────
+    let targetJid = null;
 
-    if (replyMessage) {
-        targetJid =
-            contextInfo?.participant ||
-            contextInfo?.remoteJid;
-    } else if (mentioned) {
-        targetJid = mentioned;
+    if (contextInfo?.participant) {
+        // Si l'utilisateur a répondu au message de quelqu'un
+        targetJid = contextInfo.participant;
+    } else if (contextInfo?.mentionedJid && contextInfo.mentionedJid.length > 0) {
+        // Si quelqu'un est tagué explicitement dans le texte
+        targetJid = contextInfo.mentionedJid[0];
     } else {
-        targetJid = senderId;
+        // Par défaut, la personne qui tape la commande
+        targetJid = senderId || message.key?.participant || chatId;
     }
 
     try {
-        const phone = extractPhone(targetJid);
+        const phone = await extractPhoneReal(sock, targetJid);
 
         if (!phone) {
             return sock.sendMessage(chatId, {
-                text: '❌ Numéro invalide ou introuvable.\n> BRINDI-XMD'
+                text: '❌ Impossible d\'extraire un numéro de téléphone valide.\n\n> BRINDI-XMD'
             }, { quoted: message });
         }
 
-        const vcard =
+        // Récupération optionnelle du pushName depuis le message cité pour rendre la vcard propre
+        const pushName = contextInfo?.pushName || `Contact +${phone}`;
+
+        const vcard = 
 `BEGIN:VCARD
 VERSION:3.0
-FN:+${phone}
+FN:${pushName}
 TEL;type=CELL;type=VOICE;waid=${phone}:+${phone}
 END:VCARD`;
 
         await sock.sendMessage(chatId, {
             contacts: {
-                displayName: `+${phone}`,
+                displayName: pushName,
                 contacts: [{ vcard }]
             }
         }, { quoted: message });
 
     } catch (err) {
-        console.error('[VCF ERROR]', err);
+        console.error('[VCF SINGLE ERROR]', err);
         await sock.sendMessage(chatId, {
-            text: '❌ Impossible de récupérer le numéro.\n> BRINDI-XMD'
+            text: '❌ Erreur lors de la création de la fiche contact.\n\n> BRINDI-XMD'
         }, { quoted: message });
     }
 }
+
+
 
 // ─── TAGADMIN : Mentionner tous les admins ───────────────
 async function tagadminCommand(sock, chatId, args, message) {
