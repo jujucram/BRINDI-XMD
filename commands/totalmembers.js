@@ -1,4 +1,4 @@
-// totalmembers.js — ITACHI-XMD-V2
+
 async function totalmembersCommand(sock, chatId, message) {
     // Fonctionne en groupe seulement
     if (!chatId.endsWith('@g.us')) {
