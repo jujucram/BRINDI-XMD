@@ -1,5 +1,3 @@
-// stickersearch.js — ITACHI-XMD-V2
-// 5 stickers statiques (images) + 5 stickers animés (GIFs)
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
@@ -85,9 +83,9 @@ async function searchImages(query) {
 async function searchGifs(query) {
     const apis = [
         // Giphy public beta (sans clé)
-        `https://api.giphy.com/v1/gifs/search?api_key=qnl7ssQChTdPjsKta2Ax2LMaGXz303tq&q=${encodeURIComponent(query)}&limit=8&rating=g`,
+        `https://api.giphy.com/v1/gifs/search?api_key=VOTRE_APIkey_GIPHY=${encodeURIComponent(query)}&limit=8&rating=g`,
         // Tenor (sans clé)
-        `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=AIzaSyAyimkuYQYF_FXVALexPuGQctUWRURdCYQ&limit=8`,
+        `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=VOTRE_APIkey&limit=8`,
     ];
 
     for (const url of apis) {
