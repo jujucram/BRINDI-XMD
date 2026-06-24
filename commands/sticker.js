@@ -18,7 +18,7 @@ async function stickerCommand(sock, chatId, message) {
         if (!quotedMessage) {
             return sock.sendMessage(chatId, {
                 image: { url: './assets/IMG-20240812-WA0097.jpg' },
-                caption: `🥷 *STICKER — BRINDI-XMD*\n\n❌ Réponds à une image ou vidéo avec *.sticker*\n\n> 🥷 Brandon`,
+                caption: `🥷 *STICKER — BRINDI-XMD*\n\n❌ Réponds à une image ou vidéo avec *.sticker*\n\n> BRINDI-XMD`,
             }, { quoted: message });
         }
 
