@@ -2,37 +2,37 @@ const fetch = require('node-fetch');
 
 async function stupidCommand(sock, chatId, quotedMsg, mentionedJid, sender, args) {
     try {
-        // Determine the target user
+        // Déterminer l'utilisateur cible
         let who = quotedMsg 
             ? quotedMsg.sender 
             : mentionedJid && mentionedJid[0] 
                 ? mentionedJid[0] 
                 : sender;
 
-        // Get the text for the stupid card (default to "im+stupid" if not provided)
+        // Obtenir le texte pour la carte "stupid" (valeur par défaut : "im+stupid" si aucun texte n'est fourni)
         let text = args && args.length > 0 ? args.join(' ') : 'im+stupid';
         
-        // Get the profile picture URL
+        // Récupérer l'URL de la photo de profil
         let avatarUrl;
         try {
             avatarUrl = await sock.profilePictureUrl(who, 'image');
         } catch (error) {
-            console.error('Error fetching profile picture:', error);
-            avatarUrl = 'https://telegra.ph/file/24fa902ead26340f3df2c.png'; // Default avatar
+            console.error('Erreur lors de la récupération de la photo de profil :', error);
+            avatarUrl = 'https://telegra.ph/file/24fa902ead26340f3df2c.png'; // Avatar par défaut
         }
 
-        // Fetch the stupid card from the API
+        // Récupérer la carte générée depuis l'API
         const apiUrl = `https://some-random-api.com/canvas/misc/its-so-stupid?avatar=${encodeURIComponent(avatarUrl)}&dog=${encodeURIComponent(text)}`;
         const response = await fetch(apiUrl);
         
         if (!response.ok) {
-            throw new Error(`API responded with status: ${response.status}`);
+            throw new Error(`L'API a répondu avec le statut : ${response.status}`);
         }
 
-        // Get the image buffer
+        // Obtenir le buffer de l'image
         const imageBuffer = await response.buffer();
 
-        // Send the image with caption
+        // Envoyer l'image avec la légende et mentionner l'utilisateur
         await sock.sendMessage(chatId, {
             image: imageBuffer,
             caption: `*@${who.split('@')[0]}*`,
@@ -40,11 +40,11 @@ async function stupidCommand(sock, chatId, quotedMsg, mentionedJid, sender, args
         });
 
     } catch (error) {
-        console.error('Error in stupid command:', error);
+        console.error('Erreur dans la commande stupid :', error);
         await sock.sendMessage(chatId, { 
-            text: '❌ Sorry, I couldn\'t generate the stupid card. Réessayez plus tard!'
+            text: '❌ Désolé, je n\'ai pas pu générer la carte. Réessayez plus tard !'
         });
     }
 }
 
-module.exports = { stupidCommand }; 
+module.exports = { stupidCommand };
